@@ -1,5 +1,5 @@
 from application import app, db
-from flask import render_template, request, json, Response, redirect, flash, url_for
+from flask import render_template, request, json, Response, redirect, flash, url_for, session
 from application.models import User, Course, Enrollment
 from application.forms import LoginForm, RegisterForm
 
@@ -13,6 +13,8 @@ def index():
 
 @app.route("/login", methods=['GET', 'POST'])
 def login():
+    if session.get('username'):
+        return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
         email = request.form.get("email")
@@ -22,11 +24,19 @@ def login():
         user = User.objects(email=email).first()
         if user and password == user.password:
             flash(f"{user.first_name}, you are successfully logged in!", "success")
+            session['user_id'] = user.user_id
+            session['username'] = user.first_name
             return redirect("/index")
         else:
             flash("Sorry! Something went wrong", "danger")
 
     return render_template("login.html", form=form, title="Login", login=True)
+
+@app.route("/logout")
+def logout():
+    session['user_id'] = False
+    session.pop('username', None)
+    return redirect(url_for('index'))
 
 @app.route("/courses")
 @app.route("/courses/<term>")
@@ -38,6 +48,8 @@ def courses(term = None):
 
 @app.route("/register", methods=['GET', 'POST'])
 def register():
+    if session.get('username'):
+        return redirect(url_for('index'))
     form = RegisterForm()
     if form.validate_on_submit():
         user_id = User.objects.count()
@@ -59,10 +71,13 @@ def register():
 
 @app.route("/enrollment", methods=["GET", "POST"])
 def enrollment():
+    if not session.get('username'):
+        return redirect(url_for('login'))
+    
     courseID = request.form.get('courseID') #Using get:if courseID field is not present it will return None
     #courseTitle = request.form['title'] #Using array method:if title field is not present it will crash
     courseTitle = request.form.get('title')
-    user_id = 1
+    user_id = session['user_id']
 
     #Helps to determine if we are enrolling the course
     if courseID:
@@ -70,7 +85,7 @@ def enrollment():
             flash(f"Oops! You are already registered in this course {courseTitle}", "danger")
             return redirect(url_for("courses"))
         else:
-            Enrollment(user_id=user_id, courseID=courseID)
+            Enrollment(user_id=user_id, courseID=courseID).save()
             flash(f"You are enrolled in {courseTitle}", "success")
 
     classes = list( User.objects.aggregate(*[
